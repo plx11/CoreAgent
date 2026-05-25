@@ -1,41 +1,42 @@
 package com.coreagent.settings
 
 import android.content.Context
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 
-val Context.dataStore by preferencesDataStore(name = "user_settings")
-
-/**
- * 用戶可配置設定中心
- */
 class SettingsManager(private val context: Context) {
     
-    private val CRITIC_LIMIT = intPreferencesKey("critic_limit")
+    private val masterKey = MasterKey.Builder(context)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build()
 
-    suspend fun getCriticLimit(): Int = context.dataStore.data.map { it[CRITIC_LIMIT] ?: 3 }.first()
+    private val prefs = EncryptedSharedPreferences.create(
+        context,
+        "secure_settings",
+        masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
+
+    private val CRITIC_LIMIT = "critic_limit"
+    private val REPO_URL = "repo_url"
+
+    fun getCriticLimit(): Int = prefs.getInt(CRITIC_LIMIT, 3)
+    fun updateCriticLimit(limit: Int) = prefs.edit().putInt(CRITIC_LIMIT, limit).apply()
+
+    fun getRepoUrl(): String = prefs.getString(REPO_URL, "") ?: ""
+    fun updateRepoUrl(url: String) = prefs.edit().putString(REPO_URL, url).apply()
     
-    suspend fun getModelSettings(role: String): Pair<String, String> {
-        val typeKey = stringPreferencesKey("${role}_model_type")
-        val keyKey = stringPreferencesKey("${role}_api_key")
-        val prefs = context.dataStore.data.first()
-        return Pair(prefs[typeKey] ?: "OpenAI", prefs[keyKey] ?: "")
+    fun getModelSettings(role: String): Pair<String, String> {
+        val type = prefs.getString("${role}_model_type", "OpenAI") ?: "OpenAI"
+        val key = prefs.getString("${role}_api_key", "") ?: ""
+        return Pair(type, key)
     }
 
-    suspend fun updateModelSettings(role: String, type: String, key: String) {
-        val typeKey = stringPreferencesKey("${role}_model_type")
-        val keyKey = stringPreferencesKey("${role}_api_key")
-        context.dataStore.edit {
-            it[typeKey] = type
-            it[keyKey] = key
-        }
-    }
-    
-    suspend fun updateCriticLimit(limit: Int) {
-        context.dataStore.edit { it[CRITIC_LIMIT] = limit }
+    fun updateModelSettings(role: String, type: String, key: String) {
+        prefs.edit()
+            .putString("${role}_model_type", type)
+            .putString("${role}_api_key", key)
+            .apply()
     }
 }

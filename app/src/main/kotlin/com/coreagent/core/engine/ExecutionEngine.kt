@@ -10,11 +10,13 @@ import java.util.concurrent.TimeoutException
 class ExecutionEngine {
     private val executor = Executors.newSingleThreadExecutor()
 
-    suspend fun execute(script: String, timeoutSeconds: Long = 10): String = withContext(Dispatchers.Default) {
+    suspend fun execute(script: String, argsJson: String, timeoutSeconds: Long = 10): String = withContext(Dispatchers.Default) {
         val future = executor.submit<String> {
             val duktape = Duktape.create()
             try {
-                duktape.evaluate(script).toString()
+                // 將參數作為全局變數注入
+                val finalScript = "let args = $argsJson; $script"
+                duktape.evaluate(finalScript).toString()
             } finally {
                 duktape.close()
             }
