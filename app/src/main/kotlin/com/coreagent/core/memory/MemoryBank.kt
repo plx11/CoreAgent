@@ -1,49 +1,111 @@
 package com.coreagent.core.memory
 
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.encodeToString
-import java.io.*
+import androidx.room.*
+import kotlinx.coroutines.flow.Flow
 
-@Serializable
-enum class TaskStatus { PENDING, RUNNING, COMPLETED, FAILED }
-
-@Serializable
-data class TaskStep(
-    val stepId: String,
-    val description: String,
-    var status: TaskStatus = TaskStatus.PENDING
+@Entity(tableName = "workspaces")
+data class WorkspaceEntity(
+    @PrimaryKey val workspaceId: String,
+    val globalContext: String
 )
 
-@Serializable
-data class MemoryBank(
-    var globalContext: String = "",
-    val taskQueue: MutableList<TaskStep> = mutableListOf()
-) {
+@Entity(
+    tableName = "task_steps",
+    foreignKeys = [ForeignKey(
+        entity = WorkspaceEntity::class,
+        parentColumns = ["workspaceId"],
+        childColumns = ["workspaceId"],
+        onDelete = ForeignKey.CASCADE
+    )]
+)
+data class TaskStepEntity(
+    @PrimaryKey val stepId: String,
+    val workspaceId: String,
+    val description: String,
+    val status: String,
+    val result: String?,
+    val dependenciesJson: String,
+    val assignedAgent: String,
+    val requiredToolsJson: String
+)
 
-    fun save(directory: File) {
-        val file = File(directory, "memory.json")
-        val jsonString = Json { prettyPrint = true }.encodeToString(this)
-        
-        // 使用暫存檔實現原子寫入，防止檔案損壞
-        val tempFile = File(directory, "memory.json.tmp")
-        tempFile.writeText(jsonString)
-        
-        if (!tempFile.renameTo(file)) {
-            throw IOException("無法將 MemoryBank 原子寫入至: ${file.absolutePath}")
-        }
-    }
+@Entity(
+    tableName = "chat_messages",
+    foreignKeys = [ForeignKey(
+        entity = WorkspaceEntity::class,
+        parentColumns = ["workspaceId"],
+        childColumns = ["workspaceId"],
+        onDelete = ForeignKey.CASCADE
+    )]
+)
+data class ChatMessageEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val workspaceId: String,
+    val role: String,
+    val content: String,
+    val citationsJson: String
+)
 
-    companion object {
-        fun load(directory: File): MemoryBank {
-            val file = File(directory, "memory.json")
-            if (!file.exists()) return MemoryBank()
-            
-            return try {
-                Json.decodeFromString<MemoryBank>(file.readText())
-            } catch (e: Exception) {
-                throw IOException("記憶檔格式錯誤或已損壞: ${file.absolutePath}", e)
-            }
-        }
-    }
+@Entity(
+    tableName = "produced_artifacts",
+    foreignKeys = [ForeignKey(
+        entity = WorkspaceEntity::class,
+        parentColumns = ["workspaceId"],
+        childColumns = ["workspaceId"],
+        onDelete = ForeignKey.CASCADE
+    )]
+)
+data class ProducedArtifactEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val workspaceId: String,
+    val stepId: String,
+    val artifactName: String,
+    val content: String
+)
+
+@Dao
+interface MemoryDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWorkspace(workspace: WorkspaceEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTaskSteps(steps: List<TaskStepEntity>)
+    
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMessage(message: ChatMessageEntity)
+    
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertArtifact(artifact: ProducedArtifactEntity)
+
+    @Query("UPDATE task_steps SET status = :status WHERE stepId = :id")
+    suspend fun updateStepStatus(id: String, status: String)
+
+    @Query("UPDATE task_steps SET result = :result WHERE stepId = :id")
+    suspend fun updateStepResult(id: String, result: String?)
+
+    @Query("SELECT * FROM task_steps WHERE workspaceId = :workspaceId ORDER BY stepId ASC")
+    fun getWorkspaceStepsFlow(workspaceId: String): Flow<List<TaskStepEntity>>
+    
+    @Query("SELECT * FROM chat_messages WHERE workspaceId = :workspaceId ORDER BY id ASC")
+    fun getMessagesFlow(workspaceId: String): Flow<List<ChatMessageEntity>>
+    
+    @Query("SELECT * FROM produced_artifacts WHERE workspaceId = :workspaceId")
+    suspend fun getArtifacts(workspaceId: String): List<ProducedArtifactEntity>
+
+    @Query("SELECT * FROM task_steps WHERE workspaceId = :workspaceId AND status = 'PENDING' LIMIT 1")
+    suspend fun getNextPendingStep(workspaceId: String): TaskStepEntity?
+
+    @Query("SELECT EXISTS(SELECT 1 FROM workspaces WHERE workspaceId = :id)")
+    suspend fun workspaceExists(id: String): Boolean
+
+    @Query("SELECT COUNT(*) FROM workspaces")
+    suspend fun getWorkspaceCount(): Int
+
+    @Query("SELECT * FROM task_steps WHERE stepId = :id")
+    suspend fun getTaskStep(id: String): TaskStepEntity?
+}
+
+@Database(entities = [WorkspaceEntity::class, TaskStepEntity::class, ChatMessageEntity::class, ProducedArtifactEntity::class], version = 1, exportSchema = false)
+abstract class AppDatabase : RoomDatabase() {
+    abstract fun memoryDao(): MemoryDao
 }

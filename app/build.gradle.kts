@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("kotlin-kapt")
 }
 
 android {
@@ -13,8 +14,7 @@ android {
         versionCode = 1
         versionName = "1.0"
         
-        // 商業化配置 (寫死於編譯期)
-        buildConfigField("String", "WEBHOOK_URL", "\"https://api.coreagent.com/v1/webhook\"")
+        // 本地優先配置
         buildConfigField("String", "PREMIUM_PRODUCT_ID", "\"com.coreagent.premium.monthly\"")
     }
     buildFeatures {

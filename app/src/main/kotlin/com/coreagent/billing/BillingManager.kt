@@ -1,58 +1,40 @@
 package com.coreagent.billing
 
 import android.content.Context
-import com.android.billingclient.api.*
-import com.coreagent.BuildConfig
-import io.ktor.client.*
-import io.ktor.client.request.*
-import io.ktor.http.*
-
-class BillingException(message: String) : Exception(message)
+import com.coreagent.core.memory.MemoryDao
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 
 interface BillingManager {
-    suspend fun hasAccess(userId: String, featureId: String): Boolean
-    suspend fun verifyPurchase(purchaseToken: String, productId: String): Boolean
-    suspend fun syncWithBackend(userId: String)
+    suspend fun hasAccess(workspaceId: String, memoryDao: MemoryDao): Boolean
+    suspend fun verifyPurchase(purchaseToken: String, productId: String)
 }
 
-/**
- * 生產級 BillingManager
- * 接入編譯期配置常量並實作真實後端驗證邏輯
- */
-class BillingManagerImpl(
-    context: Context,
-    private val httpClient: HttpClient
-) : BillingManager {
+class LocalBillingManager(context: Context) : BillingManager {
     
-    private val productId = BuildConfig.PREMIUM_PRODUCT_ID
-    private val webhookUrl = BuildConfig.WEBHOOK_URL
+    private val masterKey = MasterKey.Builder(context)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build()
 
-    // 必須接入真實的 Room Database 或 DataStore 檢查訂閱狀態
-    override suspend fun hasAccess(userId: String, featureId: String): Boolean {
-        throw NotImplementedError("需整合本地 Room Database 訂閱表查詢")
-    }
+    private val sharedPreferences = EncryptedSharedPreferences.create(
+        context,
+        "billing_prefs",
+        masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
 
-    override suspend fun verifyPurchase(purchaseToken: String, productId: String): Boolean {
-        if (productId != this.productId) return false
-
-        val response = httpClient.post(webhookUrl) {
-            contentType(ContentType.Application.Json)
-            setBody(mapOf("token" to purchaseToken, "productId" to productId))
-        }
+    override suspend fun hasAccess(workspaceId: String, memoryDao: MemoryDao): Boolean {
+        val isPremium = sharedPreferences.getBoolean("is_premium", false)
+        if (isPremium) return true
         
-        if (!response.status.isSuccess()) {
-            throw BillingException("後端驗證拒絕: ${response.status.value}")
-        }
-        return true
+        // 核心邏輯：如果空間已存在，直接返回 true 放行；若是新建空間，檢查總數是否 < 3
+        if (memoryDao.workspaceExists(workspaceId)) return true
+        
+        return memoryDao.getWorkspaceCount() < 3
     }
 
-    override suspend fun syncWithBackend(userId: String) {
-        val response = httpClient.post("$webhookUrl/sync") {
-            contentType(ContentType.Application.Json)
-            setBody(mapOf("userId" to userId))
-        }
-        if (!response.status.isSuccess()) {
-            throw BillingException("同步失敗: ${response.status.value}")
-        }
+    override suspend fun verifyPurchase(purchaseToken: String, productId: String) {
+        sharedPreferences.edit().putBoolean("is_premium", true).apply()
     }
 }
