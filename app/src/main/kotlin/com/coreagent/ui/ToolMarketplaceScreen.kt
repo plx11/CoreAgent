@@ -13,23 +13,49 @@ import kotlinx.coroutines.launch
 @Composable
 fun ToolMarketplaceScreen(toolManager: ToolManager, toolDao: ToolDao) {
     val scope = rememberCoroutineScope()
-    // 動態觀察資料庫中的所有工具狀態
     val tools by toolDao.getAllToolsFlow().collectAsState(initial = emptyList())
     
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("外掛工具市場", style = MaterialTheme.typography.headlineMedium)
         
-        LazyVerticalGrid(columns = GridCells.Fixed(2), modifier = Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(8.dp)
+        ) {
             items(tools) { tool ->
-                Card(modifier = Modifier.padding(8.dp)) {
+                Card(modifier = Modifier.padding(8.dp).fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(tool.name, style = MaterialTheme.typography.titleMedium)
-                        Text("狀態: 已安裝", style = MaterialTheme.typography.bodySmall)
-                        // 進度條與狀態綁定
-                        LinearProgressIndicator(progress = 1f, modifier = Modifier.fillMaxWidth())
+                        Text(text = tool.name, style = MaterialTheme.typography.titleMedium)
                         
-                        Button(onClick = { /* 工具已安裝，顯示配置或更新 */ }) {
-                            Text("已安裝")
+                        val statusText = when (tool.status) {
+                            "DOWNLOADING" -> "下載中: ${tool.downloadProgress}%"
+                            "INSTALLED" -> "狀態: 已激活"
+                            else -> "狀態: 未安裝"
+                        }
+                        
+                        Text(text = statusText, style = MaterialTheme.typography.bodySmall)
+                        
+                        if (tool.status == "DOWNLOADING") {
+                            LinearProgressIndicator(
+                                progress = tool.downloadProgress / 100f,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                            )
+                        }
+                        
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    toolManager.installTool(tool.downloadUrl)
+                                }
+                            },
+                            enabled = tool.status == "NOT_INSTALLED"
+                        ) {
+                            Text(when (tool.status) {
+                                "DOWNLOADING" -> "請稍候"
+                                "INSTALLED" -> "已啟用"
+                                else -> "下載"
+                            })
                         }
                     }
                 }

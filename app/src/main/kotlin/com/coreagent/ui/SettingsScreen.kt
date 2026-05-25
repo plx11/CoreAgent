@@ -1,4 +1,4 @@
-package com.coreagent.ui.settings
+package com.coreagent.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn

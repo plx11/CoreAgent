@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.coreagent.billing.BillingManager
 import com.coreagent.core.memory.MemoryDao
 import com.coreagent.core.memory.WorkspaceEntity
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -23,16 +24,22 @@ class DashboardViewModel(
             initialValue = emptyList()
         )
 
+    private val _showPaywallDialog = MutableStateFlow(false)
+    val showPaywallDialog: StateFlow<Boolean> = _showPaywallDialog
+
     fun createNewWorkspace(name: String) {
         viewModelScope.launch {
             val id = UUID.randomUUID().toString()
-            // 權限檢查：使用BillingManager檢查是否可新建
             if (billingManager.hasAccess(id, memoryDao)) {
                 val workspace = WorkspaceEntity(id, name)
                 memoryDao.insertWorkspace(workspace)
             } else {
-                // 觸發付費牆提示
+                _showPaywallDialog.value = true
             }
         }
+    }
+
+    fun dismissPaywall() {
+        _showPaywallDialog.value = false
     }
 }

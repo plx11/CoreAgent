@@ -1,4 +1,4 @@
-package com.coreagent.ui.chat
+package com.coreagent.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.*
@@ -53,40 +53,11 @@ fun ChatScreen(viewModel: ChatViewModel) {
         OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth().padding(8.dp), trailingIcon = { Button(onClick = { viewModel.sendMessage(text); text = "" }) { Text("發送") } })
     }
 
-import com.coreagent.core.tool.ToolManager
-import androidx.compose.material3.CircularProgressIndicator
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ChatScreen(viewModel: ChatViewModel, toolManager: ToolManager) { // 注入 toolManager
-    // ...
-    val pausedStep = memoryBank.find { it.status == "PAUSED_FOR_TOOL" }
-    var isDownloading by remember { mutableStateOf(false) }
-
-    // ...
     if (pausedStep != null) {
-        ModalBottomSheet(onDismissRequest = { /* ... */ }) {
+        ModalBottomSheet(onDismissRequest = {}) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("缺失工具: ${pausedStep.description}")
-                Button(
-                    onClick = {
-                        isDownloading = true
-                        scope.launch {
-                            try {
-                                // 假設 schemaUrl 可以從某處獲取，這裡暫用模擬
-                                toolManager.installTool("https://api.coreagent.com/tools/ops.json")
-                                isDownloading = false
-                                // 重新刷新界面 logic
-                            } catch (e: Exception) {
-                                isDownloading = false
-                            }
-                        }
-                    },
-                    enabled = !isDownloading
-                ) {
-                    if (isDownloading) CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                    else Text("下載")
-                }
+                Button(onClick = { /* trigger tool download */ }) { Text("下載") }
             }
         }
     }
