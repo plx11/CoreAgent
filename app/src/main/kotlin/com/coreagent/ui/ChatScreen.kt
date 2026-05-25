@@ -8,17 +8,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.coreagent.core.tool.ToolManager
 import com.coreagent.ui.viewmodel.ChatViewModel
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(viewModel: ChatViewModel) {
+fun ChatScreen(viewModel: ChatViewModel, toolManager: ToolManager) {
     val memoryBank by viewModel.memoryBank.collectAsState()
     val messages by viewModel.messages.collectAsState()
     var isAccordionExpanded by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
     val showPaywall by viewModel.showPaywallDialog.collectAsState()
+    val scope = rememberCoroutineScope()
 
     if (showPaywall) AlertDialog(onDismissRequest = { viewModel.dismissPaywall() }, title = { Text("付費") }, confirmButton = { Button(onClick = { viewModel.dismissPaywall() }) { Text("OK") } })
 
@@ -57,7 +60,17 @@ fun ChatScreen(viewModel: ChatViewModel) {
         ModalBottomSheet(onDismissRequest = {}) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("缺失工具: ${pausedStep.description}")
-                Button(onClick = { /* trigger tool download */ }) { Text("下載") }
+                Button(onClick = {
+                    scope.launch {
+                        // 這裡假設我們有 SchemaUrl，真實開發中應該從工具詳細資料獲取
+                        val url = "https://api.coreagent.com/tools/${pausedStep.description}.json"
+                        try {
+                            toolManager.installTool(url)
+                        } catch (e: Exception) {
+                            // 錯誤處理
+                        }
+                    }
+                }) { Text("下載") }
             }
         }
     }
