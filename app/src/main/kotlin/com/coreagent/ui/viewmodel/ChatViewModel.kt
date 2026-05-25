@@ -4,12 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.coreagent.billing.BillingManager
 import com.coreagent.core.engine.AgentService
+import com.coreagent.core.memory.ChatMessageEntity
 import com.coreagent.core.memory.MemoryDao
 import com.coreagent.core.memory.TaskStepEntity
 import com.coreagent.core.router.AgentRouter
 import com.coreagent.core.scheduler.TaskScheduler
-import com.coreagent.settings.SettingsManager
 import com.coreagent.data.tool.ToolDao
+import com.coreagent.settings.SettingsManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -37,27 +38,30 @@ class ChatViewModel(
     private val _showPaywallDialog = MutableStateFlow(false)
     val showPaywallDialog: StateFlow<Boolean> = _showPaywallDialog
 
-// ... inside ChatViewModel
-    val isPremium = billingManager.premiumStatusFlow
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
     fun sendMessage(userInstruction: String) {
         viewModelScope.launch {
             if (!billingManager.hasAccess(workspaceId, memoryDao)) {
                 _showPaywallDialog.value = true
                 return@launch
             }
-            // ...
-
-    private suspend fun executeTaskLoop() {
-        while (true) {
-            val nextStep = memoryDao.getNextPendingStep(workspaceId) ?: break
-                        
+            
             try {
-                scheduler.runStep(workspaceId, nextStep.stepId, memoryDao)
+                // 1. 儲存用戶消息
+                memoryDao.insertMessage(ChatMessageEntity(
+                    workspaceId = workspaceId,
+                    role = "USER",
+                    content = userInstruction,
+                    citationsJson = "{}"
+                ))
+                
+                // 2. 任務拆解
+                scheduler.scheduleTask(workspaceId, memoryDao, userInstruction)
+                
+                // 3. 自動執行狀態機鏈路
+                scheduler.executeFullTaskQueue(workspaceId, memoryDao)
+                
             } catch (e: Exception) {
-                memoryDao.updateStepStatus(nextStep.stepId, "FAILED")
-                break
+                // 記錄日誌或向 UI 發送錯誤訊息
             }
         }
     }
