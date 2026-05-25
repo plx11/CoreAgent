@@ -37,21 +37,17 @@ class ChatViewModel(
     private val _showPaywallDialog = MutableStateFlow(false)
     val showPaywallDialog: StateFlow<Boolean> = _showPaywallDialog
 
+// ... inside ChatViewModel
+    val isPremium = billingManager.premiumStatusFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     fun sendMessage(userInstruction: String) {
         viewModelScope.launch {
             if (!billingManager.hasAccess(workspaceId, memoryDao)) {
                 _showPaywallDialog.value = true
                 return@launch
             }
-            
-            try {
-                scheduler.scheduleTask(workspaceId, memoryDao, userInstruction)
-                executeTaskLoop()
-            } catch (e: Exception) {
-                // 處理任務拆解失敗，記錄日誌
-            }
-        }
-    }
+            // ...
 
     private suspend fun executeTaskLoop() {
         while (true) {
